@@ -1,6 +1,7 @@
 # visual_grid_game.py
 import random
 import tkinter as tk
+from agent import SimpleReflexAgent, ModelBasedAgent
 
 
 class VisualGridHuntGame:
@@ -10,6 +11,7 @@ class VisualGridHuntGame:
         self.width = width
         self.height = height
         self.agent_pos = [0, 0]  # Starting position (x, y)
+        self.agent_dir = 'Up'
 
         if custom_walls is not None:
             self.walls = set(custom_walls)
@@ -49,12 +51,36 @@ class VisualGridHuntGame:
         self.collision = False
 
     def get_percept(self) -> dict:
+        x, y = self.agent_pos
+
+        # Step A: Determine the coordinates of the cell directly "ahead"
+        if self.agent_dir == 'Up':
+            ahead_pos = (x, y + 1)
+            is_out_of_bounds = (y + 1 >= self.height)
+        elif self.agent_dir == 'Down':
+            ahead_pos = (x, y - 1)
+            is_out_of_bounds = (y - 1 < 0)
+        elif self.agent_dir == 'Left':
+            ahead_pos = (x - 1, y)
+            is_out_of_bounds = (x - 1 < 0)
+        elif self.agent_dir == 'Right':
+            ahead_pos = (x + 1, y)
+            is_out_of_bounds = (x + 1 >= self.width)
+
+        # Step B: Check conditions for the cell directly ahead
+        wall_ahead = is_out_of_bounds or (ahead_pos in self.walls)
+        food_ahead = ahead_pos in self.food_positions
+        trap_ahead = ahead_pos in self.toxic_traps
+        opponent_ahead = any(op == list(ahead_pos) for op in self.opponents)
+
+        # Step C: Return local booleans instead of global coordinates
         return {
-            'agent_pos': list(self.agent_pos),
-            'opponent_positions': [list(op) for op in self.opponents],
-            'smells_food': tuple(self.agent_pos) in self.food_positions,
-            'smells_toxin': tuple(self.agent_pos) in self.toxic_traps,
-            'hit_wall': tuple(self.agent_pos) in self.walls,
+            'food_here': tuple(self.agent_pos) in self.food_positions,
+            'trap_here': tuple(self.agent_pos) in self.toxic_traps,
+            'wall_ahead': wall_ahead,
+            'food_ahead': food_ahead,
+            'trap_ahead': trap_ahead,
+            'opponent_ahead': opponent_ahead,
             'collision': self.collision,
             'score': self.score,
             'remaining_food': len(self.food_positions)
@@ -62,21 +88,49 @@ class VisualGridHuntGame:
 
     def execute_action(self, action: str):
         self.steps += 1
+
+        # Direction mapping helpers
+        dirs = ['Up', 'Right', 'Down', 'Left']
+        
+        # Handle relative actions or directional actions
+        act_lower = action.lower()
+        if act_lower in ['turn_left', 'left'] and action not in ['Left', 'Right', 'Up', 'Down']:
+            curr_idx = dirs.index(self.agent_dir)
+            self.agent_dir = dirs[(curr_idx - 1) % 4]
+            return
+        elif act_lower in ['turn_right', 'right'] and action not in ['Left', 'Right', 'Up', 'Down']:
+            curr_idx = dirs.index(self.agent_dir)
+            self.agent_dir = dirs[(curr_idx + 1) % 4]
+            return
+        elif act_lower in ['move_forward', 'forward']:
+            move_cmd = self.agent_dir
+        elif act_lower in ['suck']:
+            tuple_pos = tuple(self.agent_pos)
+            if tuple_pos in self.food_positions:
+                self.food_positions.remove(tuple_pos)
+                self.score += 20
+            return
+        else:
+            move_cmd = action
+            if action in dirs:
+                self.agent_dir = action
+
         new_pos = list(self.agent_pos)
 
-        if action == 'Up':
+        if move_cmd == 'Up':
             new_pos[1] = min(self.height - 1, new_pos[1] + 1)
-        elif action == 'Down':
+        elif move_cmd == 'Down':
             new_pos[1] = max(0, new_pos[1] - 1)
-        elif action == 'Left':
+        elif move_cmd == 'Left':
             new_pos[0] = max(0, new_pos[0] - 1)
-        elif action == 'Right':
+        elif move_cmd == 'Right':
             new_pos[0] = min(self.width - 1, new_pos[0] + 1)
 
         if tuple(new_pos) in self.walls:
             self.score -= 5
         else:
             self.agent_pos = new_pos
+
 
         tuple_pos = tuple(self.agent_pos)
         if tuple_pos in self.food_positions:
@@ -108,12 +162,13 @@ class VisualGridHuntGame:
 class GridGameGUI:
     """Tkinter wrapper that dynamically scales cell sizes to keep larger grids on screen."""
 
-    def __init__(self, root, width=10, height=10, num_food=12, num_opponents=2, walls=None):
+    def __init__(self, root, width=10, height=10, num_food=12, num_opponents=2, walls=None, agent=None):
         self.root = root
         self.root.title("IT3012 - Scalable Multi-Agent Grid Hunt")
 
         self.env = VisualGridHuntGame(width=width, height=height, num_food=num_food, num_opponents=num_opponents,
                                       custom_walls=walls)
+        self.agent = agent if agent is not None else SimpleReflexAgent()
 
         # Dynamically calculate cell size so the total canvas fits nicely within a 600x600 window ceiling
         max_canvas_dim = 600
@@ -185,7 +240,8 @@ class GridGameGUI:
 
         def step():
             if not self.env.is_done():
-                action = random.choice(['Up', 'Down', 'Left', 'Right'])
+                percept = self.env.get_percept()
+                action = self.agent.sense_and_act(percept)
                 self.env.execute_action(action)
 
                 self.draw_grid()
@@ -201,6 +257,13 @@ class GridGameGUI:
 
 if __name__ == "__main__":
     root = tk.Tk()
-    # Try a larger grid size like 12x12 with 15 food and 3 opponents!
-    app = GridGameGUI(root, width=12, height=12, num_food=15, num_opponents=0)
+    # U-shaped trap to observe the agent behavior
+    u_walls = {(2, 1), (2, 2), (2, 3), (2, 4), (3, 1), (4, 1), (5, 1), (5, 2), (5, 3), (5, 4)}
+    
+    # Step 1.2: Use SimpleReflexAgent() to watch it get trapped in the U-wall
+    # Step 1.3: Switch to ModelBasedAgent() to see it remember visited cells and escape!
+    agent = SimpleReflexAgent()
+    # agent = ModelBasedAgent()
+
+    app = GridGameGUI(root, width=10, height=10, num_food=10, num_opponents=0, walls=u_walls, agent=agent)
     root.mainloop()
