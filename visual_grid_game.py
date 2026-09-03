@@ -1,7 +1,8 @@
 # visual_grid_game.py
 import random
 import tkinter as tk
-from agent import SimpleReflexAgent, ModelBasedAgent
+from agent import SimpleReflexAgent, ModelBasedAgent, SearchAgent
+
 
 
 class VisualGridHuntGame:
@@ -73,7 +74,6 @@ class VisualGridHuntGame:
         trap_ahead = ahead_pos in self.toxic_traps
         opponent_ahead = any(op == list(ahead_pos) for op in self.opponents)
 
-        # Step C: Return local booleans instead of global coordinates
         return {
             'food_here': tuple(self.agent_pos) in self.food_positions,
             'trap_here': tuple(self.agent_pos) in self.toxic_traps,
@@ -83,8 +83,13 @@ class VisualGridHuntGame:
             'opponent_ahead': opponent_ahead,
             'collision': self.collision,
             'score': self.score,
-            'remaining_food': len(self.food_positions)
+            'remaining_food': len(self.food_positions),
+            'agent_pos': tuple(self.agent_pos),
+            'grid_size': (self.width, self.height),
+            'walls': list(self.walls),
+            'all_food': list(self.food_positions)
         }
+
 
     def execute_action(self, action: str):
         self.steps += 1
@@ -241,12 +246,20 @@ class GridGameGUI:
         def step():
             if not self.env.is_done():
                 percept = self.env.get_percept()
+                if self.env.steps == 0:
+                    print("\n[Step 1.1 World Model Percept]")
+                    print(f"  grid_size: {percept['grid_size']}")
+                    print(f"  walls ({len(percept['walls'])}): {percept['walls']}")
+                    print(f"  all_food ({len(percept['all_food'])}): {percept['all_food']}")
+                    print(f"  agent_pos: {percept['agent_pos']}\n")
+
                 action = self.agent.sense_and_act(percept)
                 self.env.execute_action(action)
 
                 self.draw_grid()
                 self.label.config(text=f"Score: {self.env.score} | Steps: {self.env.steps} | Action: {action}")
                 self.root.after(250, step)
+
             else:
                 end_text = f"Collision! Game Over! Final Score: {self.env.score}" if self.env.collision else f"Finished! Final Score: {self.env.score}"
                 self.label.config(text=end_text)
@@ -260,10 +273,11 @@ if __name__ == "__main__":
     # U-shaped trap to observe the agent behavior
     u_walls = {(2, 1), (2, 2), (2, 3), (2, 4), (3, 1), (4, 1), (5, 1), (5, 2), (5, 3), (5, 4)}
     
-    # Step 1.2: Use SimpleReflexAgent() to watch it get trapped in the U-wall
-    # Step 1.3: Switch to ModelBasedAgent() to see it remember visited cells and escape!
-    agent = SimpleReflexAgent()
-    # agent = ModelBasedAgent()
+    # Practical 3: Goal-Based / Planning SearchAgent
+    # Change active_algo between 'BFS', 'DFS', and 'UCS' to observe behavior:
+    agent = SearchAgent()
+    agent.active_algo = 'BFS'   # Options: 'BFS', 'DFS', 'UCS'
 
     app = GridGameGUI(root, width=10, height=10, num_food=10, num_opponents=0, walls=u_walls, agent=agent)
-    root.mainloop()
+    root.mainloop()
+
