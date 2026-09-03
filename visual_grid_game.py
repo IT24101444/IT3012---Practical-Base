@@ -273,11 +273,12 @@ if __name__ == "__main__":
     # U-shaped trap to observe the agent behavior
     u_walls = {(2, 1), (2, 2), (2, 3), (2, 4), (3, 1), (4, 1), (5, 1), (5, 2), (5, 3), (5, 4)}
     
-    # Practical 3: Goal-Based / Planning SearchAgent
-    # Change active_algo between 'BFS', 'DFS', and 'UCS' to observe behavior:
+    # Practical 4: Informed / Heuristic Search (A*)
+    # Change active_algo between 'AStar', 'BFS', 'DFS', 'UCS' to observe behavior:
     agent = SearchAgent()
-    agent.active_algo = 'BFS'   # Options: 'BFS', 'DFS', 'UCS'
+    agent.active_algo = 'AStar'   # Options: 'AStar', 'BFS', 'DFS', 'UCS'
 
     app = GridGameGUI(root, width=10, height=10, num_food=10, num_opponents=0, walls=u_walls, agent=agent)
     root.mainloop()
+
 

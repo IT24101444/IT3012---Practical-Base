@@ -1,5 +1,6 @@
 import random
 import heapq
+import math
 from collections import deque
 
 
@@ -70,7 +71,14 @@ class SearchAgent:
             ('Right', (1, 0))
         ]
 
+    def manhattan_distance(self, pos, goal):
+        return abs(pos[0] - goal[0]) + abs(pos[1] - goal[1])
+
+    def euclidean_distance(self, pos, goal):
+        return math.sqrt((pos[0] - goal[0])**2 + (pos[1] - goal[1])**2)
+
     def _get_neighbors(self, current_pos, walls, grid_size):
+
         neighbors = []
         w, h = grid_size
         wall_set = set(tuple(p) for p in walls)
@@ -147,6 +155,38 @@ class SearchAgent:
                     heapq.heappush(frontier, (new_cost, next_pos, path + [action]))
         return None
 
+    def astar_search(self, start_pos, goal_pos, walls, grid_size, heuristic_type='manhattan'):
+        start = tuple(start_pos)
+        goal = tuple(goal_pos)
+        if start == goal:
+            return []
+
+        heuristic_fn = self.manhattan_distance if heuristic_type == 'manhattan' else self.euclidean_distance
+
+        frontier = []
+        reached_states = set()
+
+        h_start = heuristic_fn(start, goal)
+        heapq.heappush(frontier, (h_start, 0, start, []))
+
+        while frontier:
+            f_cost, g_cost, current_pos, path_taken = heapq.heappop(frontier)
+
+            if current_pos == goal:
+                return path_taken
+
+            if current_pos in reached_states:
+                continue
+            reached_states.add(current_pos)
+
+            for action, next_pos in self._get_neighbors(current_pos, walls, grid_size):
+                if next_pos not in reached_states:
+                    g_new = g_cost + 1
+                    h_new = heuristic_fn(next_pos, goal)
+                    f_new = g_new + h_new
+                    heapq.heappush(frontier, (f_new, g_new, next_pos, path_taken + [action]))
+        return None
+
     def sense_and_act(self, percept: dict) -> str:
         if not self.plan:
             all_food = percept.get('all_food', [])
@@ -168,10 +208,13 @@ class SearchAgent:
                 self.plan = self.dfs_search(agent_pos, closest_food, walls, grid_size) or []
             elif self.active_algo == 'UCS':
                 self.plan = self.ucs_search(agent_pos, closest_food, walls, grid_size) or []
+            elif self.active_algo == 'AStar':
+                self.plan = self.astar_search(agent_pos, closest_food, walls, grid_size, 'manhattan') or []
 
         if self.plan:
             return self.plan.pop(0)
         return 'Stay'
+
 
 
 
